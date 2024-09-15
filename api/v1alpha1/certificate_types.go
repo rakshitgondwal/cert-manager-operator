@@ -22,26 +22,22 @@ import (
 
 // CertificateSpec defines the desired state of Certificate
 type CertificateSpec struct {
+	// +kubebuilder:validation:Required
 	// DNS name for the certificate
 	DNSName string `json:"dnsName"`
-
+	// +kubebuilder:validation:Required
 	// Validity period (e.g., "360d")
 	Validity string `json:"validity"`
-
+	// +kubebuilder:validation:Required
 	// Reference to the Secret where the certificate is stored
 	SecretRef SecretReference `json:"secretRef"`
 }
 
 // SecretReference refers to a Kubernetes Secret
 type SecretReference struct {
+	// +kubebuilder:validation:Required
 	// Name of the Secret
 	Name string `json:"name"`
-}
-
-// CertificateStatus defines the observed state of Certificate
-type CertificateStatus struct {
-	// Conditions represent the latest available observations of the Certificate's state
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -52,8 +48,7 @@ type Certificate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   CertificateSpec   `json:"spec,omitempty"`
-	Status CertificateStatus `json:"status,omitempty"`
+	Spec CertificateSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
