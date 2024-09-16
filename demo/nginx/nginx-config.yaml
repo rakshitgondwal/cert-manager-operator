@@ -7,7 +7,7 @@ data:
   default.conf: |
     server {
         listen 443 ssl;
-        server_name example.k8c.io;
+        server_name rakshitgondwal.io;
 
         ssl_certificate /etc/nginx/certs/tls.crt;
         ssl_certificate_key /etc/nginx/certs/tls.key;

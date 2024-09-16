@@ -1,4 +1,4 @@
-## Kubernetes Cert Manager Operator
+# Kubernetes Cert Manager Operator
 
 This operator can help you to generate self signed certificates inside a Kubernetes Cluster using a
 `Certificate` CRD.
@@ -28,8 +28,36 @@ This operator can help you to generate self signed certificates inside a Kuberne
     kubectl apply -f demo/deployment.yaml  
     ```
 
+* Wait for the Operator pod to be in the running state. Once it's up, we can apply our `Certificate` resource which will
+  create a new Self Signed TLS Certificate and store it in a Secret inside our Cluster.
+    ```
+    kubectl apply -f demo/certificate.yaml 
+    ```
 
-#### Want to try it out locally? Follow the below guide
+* Our operator shoudl detect that a new resource was created of type `Certificate` and reconciling the object.
+  It will then create a secret in our cluster which we can check by:
+    ```
+    kubectl get secrets  
+    ```
+
+* To test if our Certificate is valid or not, we can try to create a nginx server in our cluster with a SSL connection
+  using our certificate:
+    ```
+    kubectl apply -f demo/nginx  
+    ```
+
+* We can now port forward our service and access it via localhost.
+    ```
+    kubectl port-forward service/nginx-tls-service 8443:443 -n default
+    ```
+
+* We can check by curling over the localhost port using https which proves that an SSL connection has been made.
+    ```
+    curl -k https://localhost:8443
+    ```
+
+
+### Want to try it out locally? Follow the below guide
 
 * Create an OCI Artifact for the Operator which you can later use to deploy in your cluster.
     ```
@@ -40,3 +68,5 @@ This operator can help you to generate self signed certificates inside a Kuberne
     ```
     docker push <remote-registry>/<image-name>:<image-tag> 
     ```
+
+* You can then use this image to deploy any changes to operator.
