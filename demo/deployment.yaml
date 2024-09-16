@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: certificate-manager-controller
+  namespace: cert-manager
+  labels:
+    app: certificate-manager-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: certificate-manager-controller
+  template:
+    metadata:
+      labels:
+        app: certificate-manager-controller
+    spec:
+      serviceAccountName: controller-manager
+      containers:
+        - name: manager
+          image: rakshitgondwal/cert-manager-operator:test
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
