@@ -51,9 +51,16 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	if cert.Status.CurrentStatus == "" && cert.Status.Message == "" {
+		cert.Status = certsv1alpha1.CertificateStatus{}
+	}
+
 	validityDuration, err := parseCustomDuration(cert.Spec.Validity)
 	if err != nil {
 		logger.Error(err, "Unable to parse validity duration")
+		if err := r.updateCertificateStatus(ctx, &cert, "InvalidDuration", err.Error()); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -63,6 +70,9 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		certPEM, keyPEM, err := generateSelfSignedCert(cert.Spec.DNSName, validityDuration)
 		if err != nil {
 			logger.Error(err, "Failed to generate certificate")
+			if err := r.updateCertificateStatus(ctx, &cert, "CertGenerationFailed", err.Error()); err != nil {
+				logger.Error(err, "Error updating Certificate status")
+			}
 			return ctrl.Result{}, err
 		}
 
@@ -71,6 +81,9 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      cert.Spec.SecretRef.Name,
 				Namespace: req.Namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(&cert, certsv1alpha1.GroupVersion.WithKind("Certificate")),
+				},
 			},
 			Type: corev1.SecretTypeTLS,
 			Data: map[string][]byte{
@@ -81,26 +94,43 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		if err := r.Create(ctx, &newSecret); err != nil {
 			logger.Error(err, "Failed to create Secret")
+			if err := r.updateCertificateStatus(ctx, &cert, "SecretCreationFailed", err.Error()); err != nil {
+				logger.Error(err, "Error updating Certificate status")
+			}
 			return ctrl.Result{}, err
 		}
 
 		logger.Info("Successfully created Secret with TLS certificate")
+		if err := r.updateCertificateStatus(ctx, &cert, "CertificateCreated", "TLS certificate successfully created"); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
+
 		return ctrl.Result{}, nil
 	} else if err != nil {
 		logger.Error(err, "Failed to get Secret", "Secret.Name")
+		if err := r.updateCertificateStatus(ctx, &cert, "SecretFetchFailed", err.Error()); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
 		return ctrl.Result{}, err
 	}
 
 	logger.Info("Secret already exists")
 	certPEM, exists := secret.Data["tls.crt"]
 	if !exists {
-		logger.Error(fmt.Errorf("tls.crt not found in Secret"), "Secret data incomplete")
+		errMsg := "tls.crt not found in Secret"
+		logger.Error(fmt.Errorf(errMsg), "Secret data incomplete")
+		if err := r.updateCertificateStatus(ctx, &cert, "MissingCertData", errMsg); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
 		return ctrl.Result{}, nil
 	}
 
 	parsedCert, err := parseCertificate(certPEM)
 	if err != nil {
 		logger.Error(err, "Failed to parse existing certificate")
+		if err := r.updateCertificateStatus(ctx, &cert, "CertParseFailed", err.Error()); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -113,6 +143,9 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		newCertPEM, newKeyPEM, err := generateSelfSignedCert(cert.Spec.DNSName, validityDuration)
 		if err != nil {
 			logger.Error(err, "Failed to generate renewed certificate")
+			if err := r.updateCertificateStatus(ctx, &cert, "CertRenewalFailed", err.Error()); err != nil {
+				logger.Error(err, "Error updating Certificate status")
+			}
 			return ctrl.Result{}, err
 		}
 
@@ -121,15 +154,35 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		if err := r.Update(ctx, &secret); err != nil {
 			logger.Error(err, "Failed to update Secret with renewed certificate")
+			if err := r.updateCertificateStatus(ctx, &cert, "SecretUpdateFailed", err.Error()); err != nil {
+				logger.Error(err, "Error updating Certificate status")
+			}
 			return ctrl.Result{}, err
 		}
 
 		logger.Info("Successfully renewed TLS certificate")
+		if err := r.updateCertificateStatus(ctx, &cert, "CertificateRenewed", "TLS certificate successfully renewed"); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
 	} else {
 		logger.Info("Certificate is still valid. No renewal needed.")
+		if err := r.updateCertificateStatus(ctx, &cert, "CertificateValid", "TLS certificate is still valid"); err != nil {
+			logger.Error(err, "Error updating Certificate status")
+		}
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CertificateReconciler) updateCertificateStatus(ctx context.Context, cert *certsv1alpha1.Certificate, status, message string) error {
+	cert.Status.CurrentStatus = status
+	cert.Status.Message = message
+	cert.Status.LastUpdated = metav1.Now()
+
+	if err := r.Status().Update(ctx, cert); err != nil {
+		return fmt.Errorf("Failed to update Certificate status")
+	}
+	return nil
 }
 
 func generateSelfSignedCert(dnsName string, validity time.Duration) ([]byte, []byte, error) {

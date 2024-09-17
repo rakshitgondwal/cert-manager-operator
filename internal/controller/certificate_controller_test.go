@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestGenerateSelfSignedCert tests the generateSelfSignedCert function.
 func TestGenerateSelfSignedCert(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -96,7 +95,6 @@ func TestGenerateSelfSignedCert(t *testing.T) {
 	}
 }
 
-// TestParseCertificate tests the parseCertificate function.
 func TestParseCertificate(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -158,7 +156,6 @@ func mustGenerateCert(t *testing.T, dnsName string, validity time.Duration) []by
 	return cert
 }
 
-// TestParseCustomDuration tests the ParseCustomDuration function.
 func TestParseCustomDuration(t *testing.T) {
 	tests := []struct {
 		name      string

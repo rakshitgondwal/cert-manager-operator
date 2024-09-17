@@ -40,8 +40,23 @@ type SecretReference struct {
 	Name string `json:"name"`
 }
 
+// CertificateStatus defines the observed state of Certificate
+type CertificateStatus struct {
+	// +optional
+	// Current status of the Certificate
+	CurrentStatus string `json:"currentStatus,omitempty"`
+	// +optional
+	// Human-readable message providing details about the current status
+	Message string `json:"message,omitempty"`
+	// +optional
+	// Timestamp of the last status update
+	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="CurrentStatus",type=string,JSONPath=`.status.currentStatus`
+// +kubebuilder:printcolumn:name="LastUpdated",type=string,JSONPath=`.status.lastUpdated`
 
 // Certificate is the Schema for the certificates API
 type Certificate struct {
@@ -49,6 +64,7 @@ type Certificate struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec CertificateSpec `json:"spec,omitempty"`
+	Status CertificateStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
