@@ -42,6 +42,7 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	logger.Info("Reconciling Certificate", "namespace", req.Namespace, "name", req.Name)
 
+	// look for the certificate resource if it exists or not
 	var cert certsv1alpha1.Certificate
 	if err := r.Get(ctx, req.NamespacedName, &cert); err != nil {
 		if errors.IsNotFound(err) {
@@ -51,10 +52,13 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// set the status fields incase they are nto defined
 	if cert.Status.CurrentStatus == "" && cert.Status.Message == "" {
 		cert.Status = certsv1alpha1.CertificateStatus{}
 	}
 
+	// check if the value spec.validity is valid or not
+	// this will also convert the validity value in form of hours
 	validityDuration, err := parseCustomDuration(cert.Spec.Validity)
 	if err != nil {
 		logger.Error(err, "Unable to parse validity duration")
@@ -64,9 +68,13 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	// look for the secret refrenced inside the cluster
+	// if exists, check for the expiration value of the certificate, if it is < 30 days, renew the cert
+	// if not exists, create a new secret with a new cert
 	var secret corev1.Secret
 	err = r.Get(ctx, client.ObjectKey{Name: cert.Spec.SecretRef.Name, Namespace: req.Namespace}, &secret)
 	if err != nil && errors.IsNotFound(err) {
+		// create a new cert
 		certPEM, keyPEM, err := generateSelfSignedCert(cert.Spec.DNSName, validityDuration)
 		if err != nil {
 			logger.Error(err, "Failed to generate certificate")
@@ -76,6 +84,7 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
+		// create a new secret
 		logger.Info("Creating new Secret")
 		newSecret := corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -107,6 +116,7 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		return ctrl.Result{}, nil
 	} else if err != nil {
+		// log if there was any other error
 		logger.Error(err, "Failed to get Secret", "Secret.Name")
 		if err := r.updateCertificateStatus(ctx, &cert, "SecretFetchFailed", err.Error()); err != nil {
 			logger.Error(err, "Error updating Certificate status")
@@ -114,7 +124,9 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// since there was no error, that means secret already exists
 	logger.Info("Secret already exists")
+	// parse the cert to check the expiration date
 	certPEM, exists := secret.Data["tls.crt"]
 	if !exists {
 		errMsg := "tls.crt not found in Secret"
@@ -134,9 +146,11 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	// check for the expiration date
 	timeLeft := time.Until(parsedCert.NotAfter)
 	renewalThresholdDuration := 30 * 24 * time.Hour
 
+	// if the expiration date is less than 30 days, renew the cert
 	if timeLeft < renewalThresholdDuration {
 		logger.Info("Certificate is nearing expiration. Initiating renewal.")
 
@@ -165,6 +179,7 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "Error updating Certificate status")
 		}
 	} else {
+		// there is time for the cert to be renewed, thus we don't perform any action and return
 		logger.Info("Certificate is still valid. No renewal needed.")
 		if err := r.updateCertificateStatus(ctx, &cert, "CertificateValid", "TLS certificate is still valid"); err != nil {
 			logger.Error(err, "Error updating Certificate status")
@@ -174,6 +189,7 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
+// used to update the certificate status field
 func (r *CertificateReconciler) updateCertificateStatus(ctx context.Context, cert *certsv1alpha1.Certificate, status, message string) error {
 	cert.Status.CurrentStatus = status
 	cert.Status.Message = message
@@ -185,6 +201,7 @@ func (r *CertificateReconciler) updateCertificateStatus(ctx context.Context, cer
 	return nil
 }
 
+// used to generate a new self signed certificate
 func generateSelfSignedCert(dnsName string, validity time.Duration) ([]byte, []byte, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -221,6 +238,7 @@ func generateSelfSignedCert(dnsName string, validity time.Duration) ([]byte, []b
 	return certPEM, keyPEM, nil
 }
 
+// used to parse the certificate
 func parseCertificate(certPEM []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
@@ -233,6 +251,7 @@ func parseCertificate(certPEM []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
+// used to verify and parse the spec.interval field
 func parseCustomDuration(s string) (time.Duration, error) {
 	re := regexp.MustCompile(`^(\d+)([smhdwy])$`)
 	matches := re.FindStringSubmatch(s)
