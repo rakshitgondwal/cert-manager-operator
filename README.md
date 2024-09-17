@@ -3,14 +3,18 @@
 This operator can help you to generate self signed certificates inside a Kubernetes Cluster using a
 `Certificate` CRD.
 
-### How to use?
+Link to a working example: https://asciinema.org/a/676346
 
-#### Pre-requisites:
+<img src="assets/demo.gif" width=650px; />
+
+## How to use?
+
+### Pre-requisites:
 * A running Kubernetes Cluster
 * Docker
 * kubectl
 
-#### Follow along!
+### Follow along!
 
 * Apply the CRDs into your cluster.
     ```
@@ -56,8 +60,40 @@ This operator can help you to generate self signed certificates inside a Kuberne
     curl -k https://localhost:8443
     ```
 
+## Decode and Inspect the Certificate and Key
 
-### Want to try it out locally? Follow the below guide
+To further validate the contents, decode the certificate and key and inspect their details.
+
+* Extract and decode tls.crt:
+
+  ```
+  kubectl get secret my-certificate-secret -n default -o jsonpath="{.data.tls\.crt}" | base64 --decode > tls.crt
+
+  ```
+
+* Extract and decode tls.key:
+  ```
+  kubectl get secret my-certificate-secret -n default -o jsonpath="{.data.tls\.key}" | base64 --decode > tls.key
+  ```
+
+* Use OpenSSL to view the certificate details:
+
+  ```
+  openssl x509 -in tls.crt -noout -text
+  ```
+
+* Ensure that the private key is correctly formatted and valid:
+
+  ```
+  openssl rsa -in tls.key -check
+  ```
+  You should see a confirmation like:
+
+  ```
+  RSA key ok
+  ```
+
+## Want to try it out locally? Follow the below guide
 
 * Create an OCI Artifact for the Operator which you can later use to deploy in your cluster.
     ```

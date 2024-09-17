@@ -1,19 +1,3 @@
-/*
-Copyright 2024 rakshitgondwal.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package controller
 
 import (
@@ -25,6 +9,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"regexp"
+	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,7 +40,6 @@ type CertificateReconciler struct {
 func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Corrected log statement with proper key-value pairs
 	logger.Info("Reconciling Certificate", "namespace", req.Namespace, "name", req.Name)
 
 	var cert certsv1alpha1.Certificate
@@ -66,9 +51,9 @@ func (r *CertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	validityDuration, err := time.ParseDuration(cert.Spec.Validity)
+	validityDuration, err := parseCustomDuration(cert.Spec.Validity)
 	if err != nil {
-		logger.Error(err, "Invalid validity duration format")
+		logger.Error(err, "Unable to parse validity duration")
 		return ctrl.Result{}, nil
 	}
 
@@ -193,6 +178,39 @@ func parseCertificate(certPEM []byte) (*x509.Certificate, error) {
 		return nil, err
 	}
 	return cert, nil
+}
+
+func parseCustomDuration(s string) (time.Duration, error) {
+	re := regexp.MustCompile(`^(\d+)([smhdwy])$`)
+	matches := re.FindStringSubmatch(s)
+	if len(matches) != 3 {
+		return 0, fmt.Errorf("invalid duration format: %s", s)
+	}
+
+	value, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, fmt.Errorf("invalid numeric value in duration: %v", err)
+	}
+
+	var duration time.Duration
+	switch matches[2] {
+	case "s":
+		duration = time.Duration(value) * time.Second
+	case "m":
+		duration = time.Duration(value) * time.Minute
+	case "h":
+		duration = time.Duration(value) * time.Hour
+	case "d":
+		duration = time.Duration(value) * 24 * time.Hour
+	case "w":
+		duration = time.Duration(value) * 7 * 24 * time.Hour
+	case "y":
+		duration = time.Duration(value) * 365 * 24 * time.Hour
+	default:
+		return 0, fmt.Errorf("unknown duration unit: %s", matches[2])
+	}
+
+	return duration, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
